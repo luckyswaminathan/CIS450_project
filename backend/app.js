@@ -370,40 +370,47 @@ app.get('/api/state-keywords', async function(req, res) {
 });
 
 
-app.get('/api/users/positive-high-engagement', async function(req, res) {
-  // Optional parameters with defaults
-  const followersThreshold = req.query.followersThreshold;
-  const engagementThreshold = req.query.engagementThreshold;
+app.get('/api/users/high-engagement', async function(req, res) {
+  // Reading query parameters with defaults
+  const followersThreshold = parseInt(req.query.followersThreshold) || 50;
+  const engagementThreshold = parseFloat(req.query.engagementThreshold) || 5;
+  const compareType = req.query.compareType || 'sentiment'; // 'bias' or 'sentiment'
+  const compareDirection = req.query.compareDirection || '<'; // '<' or '>'
+
+  // Validate compareType and compareDirection
+  if (!['sentiment', 'bias'].includes(compareType)) {
+    return res.status(400).json({ error: 'Invalid compareType value. It must be "bias" or "sentiment".' });
+  }
+  if (!['<', '>'].includes(compareDirection)) {
+    return res.status(400).json({ error: 'Invalid compareDirection value. It must be "<" or ">".' });
+  }
+
+  // Setup the NOT EXISTS subquery based on compareType and compareDirection
+  const sentimentComparison = `ET.${compareType} ${compareDirection} 0`;
 
   const sql = `
     SELECT 
-      U.user_id, 
       U.user_handle, 
       U.followers, 
-      AVG(E.likes + E.retweet_count) AS avg_engagement
+      U.avg_engagement
     FROM 
-      ElectionTweets AS E
-    INNER JOIN 
-      User AS U ON E.user_id = U.user_id
+      User AS U
     WHERE
       NOT EXISTS (
         SELECT 1
         FROM ElectionTweets AS ET
-        WHERE ET.user_id = E.user_id AND ET.sentiment != 'Positive'
+        WHERE ET.user_id = U.user_id AND ${sentimentComparison}
       )
-    GROUP BY 
-      U.user_id
-    HAVING 
-      U..followers, > ? AND
-      AVG(E.likes + E.retweet_count) > ?
+      AND U.followers > ?
+      AND U.avg_engagement > ?
     ORDER BY 
-      avg_engagement DESC, 
-      U..followers,  DESC;
+      U.avg_engagement DESC, 
+      U.followers DESC;
   `;
 
   // Execute the query with async/await
   try {
-    const [results] = await connection.promise().query(sql, [followersThreshold || 1000, engagementThreshold || 500]);
+    const [results] = await connection.promise().query(sql, [followersThreshold, engagementThreshold]);
     res.json(results);
   } catch (err) {
     console.error('Database query error:', err);
