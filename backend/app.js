@@ -58,10 +58,10 @@ app.get('/api/user-engagement', (req, res) => {
     SELECT 
       U.USER_ID, 
       AVG(E.LIKES) AS AVG_LIKES, 
-      AVG(E.RETWEETS) AS AVG_RETWEETS, 
+      AVG(E.RETWEET_COUNT) AS AVG_RETWEETS, 
       AVG(E.SENTIMENT) AS AVG_SENTIMENT
     FROM 
-      ElectionTweets E
+    ELECTIONTWEETS E
     JOIN 
       User U ON E.USER_ID = U.USER_ID
   `;
@@ -118,9 +118,9 @@ app.get('/api/influence', (req, res) => {
   }
 
   const sql = `
-    SELECT U.USER_ID, U.USER_SCREEN_NAME, U.FOLLOWERS, U.POLITICAL_AFFILIATION, AVG(E.LIKES + E.RETWEETS) AS AVG_ENGAGEMENT
+    SELECT U.USER_ID, U.USER_SCREEN_NAME, U.FOLLOWERS, U.POLITICAL_AFFILIATION, AVG(E.LIKES + E.RETWEET_COUNT) AS AVG_ENGAGEMENT
     FROM User U
-    JOIN ElectionTweets E ON U.USER_ID = E.USER_ID
+    JOIN ELECTIONTWEETS E ON U.USER_ID = E.USER_ID
     GROUP BY U.USER_ID
     HAVING U.FOLLOWERS > ?
     ORDER BY AVG_ENGAGEMENT DESC, U.FOLLOWERS DESC;
@@ -139,7 +139,7 @@ app.get('/api/influence', (req, res) => {
 app.get('/api/sentiment/political-affiliation', (req, res) => {
   const sql = `
     SELECT U.POLITICAL_AFFILIATION, E.SENTIMENT, COUNT(*) AS SENTIMENT_COUNT
-    FROM ElectionTweets E
+    FROM ELECTIONTWEETS E
     JOIN User U ON E.USER_ID = U.USER_ID
     GROUP BY U.POLITICAL_AFFILIATION, E.SENTIMENT
     ORDER BY U.POLITICAL_AFFILIATION, SENTIMENT_COUNT DESC;
@@ -154,9 +154,30 @@ app.get('/api/sentiment/political-affiliation', (req, res) => {
   });
 });
 
-// Error handling for invalid paths
-app.use((req, res) => {
-  res.status(404).json({ error: "Not Found" });
+//Query 7
+app.get('/api/politiciancomparison', (req, res) => {
+  // SQL statement to compute average retweets per tweet for Politicians and Others
+  console.log("Route /api/engagement/politiciancomparison accessed");
+  const sql = `
+    SELECT
+        user_category,
+        AVG(CASE
+            WHEN user_category = 'Politician' THEN retweets_for_politicians * 1.0 / total_tweets
+            ELSE retweet_count_for_others * 1.0 / total_tweets
+        END) AS avg_retweets_per_tweet
+    FROM
+        mat_view_user_retweets
+    GROUP BY
+        user_category;
+  `;
+
+  connection.query(sql, (err, results) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+    res.json(results);
+  });
 });
 
 
@@ -174,7 +195,7 @@ app.get('/api/topics/state-affiliation', (req, res) => {
       E.TOPIC, 
       COUNT(*) AS TOPIC_COUNT
     FROM 
-      ElectionTweets E
+    ELECTIONTWEETS E
     JOIN 
       User U ON E.USER_ID = U.USER_ID
     WHERE 
@@ -212,7 +233,7 @@ app.get('/api/sentiment/time', async function(req, res) {
       E.SENTIMENT, 
       COUNT(*) AS SENTIMENT_COUNT
     FROM 
-      ElectionTweets E
+    ELECTIONTWEETS E
     WHERE 
       E.TOPIC IS NOT NULL AND E.CREATED_AT BETWEEN ? AND ?
     GROUP BY 
@@ -273,27 +294,6 @@ app.get('/api/sentiment/state', (req, res) => {
   });
 });
 
-
-app.get('/api/engagement/politiciancomparison', (req, res) => {
-  sql = `
-    WITH nonP AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as npL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'No'
-    ), P AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as pL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'YES'
-  ) SELECT nonP.npL, P.pL FROM nonP, P;
-  `;
-  connection.query(sql, (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-    res.json(results);
-  });
- });
  
 
 app.get('/api/state-keywords', async function(req, res) {
@@ -398,7 +398,7 @@ app.get('/api/users/high-engagement', async function(req, res) {
     WHERE
       NOT EXISTS (
         SELECT 1
-        FROM ElectionTweets AS ET
+        FROM ELECTIONTWEETS AS ET
         WHERE ET.user_id = U.user_id AND ${sentimentComparison}
       )
       AND U.followers > ?
@@ -419,53 +419,74 @@ app.get('/api/users/high-engagement', async function(req, res) {
 });
 
 
-app.get('/api/engagement/politiciancomparison', (req, res) => {
-  sql = `
-    WITH nonP AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as npL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'No'
-    ), P AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as pL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'YES'
-  ) SELECT nonP.npL, P.pL FROM nonP, P;
+//Query 7
+// app.get('/api/engagement/politiciancomparison', (req, res) => {
+//   // SQL statement to compute average retweets per tweet for Politicians and Others
+//   const sql = `
+//     SELECT
+//         user_category,
+//         AVG(CASE
+//             WHEN user_category = 'Politician' THEN retweets_for_politicians * 1.0 / total_tweets
+//             ELSE retweet_count_for_others * 1.0 / total_tweets
+//         END) AS avg_retweets_per_tweet
+//     FROM
+//         mat_view_user_retweets
+//     GROUP BY
+//         user_category;
+//   `;
+
+//   connection.query(sql, (err, results) => {
+//     if (err) {
+//       console.error(err);
+//       return res.status(500).json({ error: 'Internal server error' });
+//     }
+//     res.json(results);
+//   });
+// });
+
+//Query 10
+app.get('/api/users/sentiment-transition', (req, res) => {
+  // Retrieve the follower_threshold from the query string with a default of 1000
+  let followerThreshold = parseInt(req.query.followerThreshold, 10) || 1000;
+
+  // Validate the follower threshold to ensure it's a positive number
+  if (isNaN(followerThreshold) || followerThreshold < 0) {
+    return res.status(400).json({ error: 'The follower threshold must be a positive integer.' });
+  }
+
+  // SQL query to find users with a significant sentiment transition and their engagement ratio changes
+  const sql = `
+    SELECT
+        U.USER_ID,
+        U.USER_HANDLE,
+        MV.TRANSITION,
+        MV.PRE_ENGAGEMENT_RATIO,
+        MV.POST_ENGAGEMENT_RATIO,
+        (MV.POST_ENGAGEMENT_RATIO - MV.PRE_ENGAGEMENT_RATIO) AS ENGAGEMENT_DIFF
+    FROM
+        User U
+    JOIN
+        materialized_view_user_sentiment_transition MV ON U.USER_ID = MV.USER_ID
+    WHERE
+        U.FOLLOWERS > ?
+        AND MV.TRANSITION != 'No Transition'
+    ORDER BY
+        ENGAGEMENT_DIFF DESC;
   `;
-  connection.query(sql, (err, results) => {
+
+  // Execute the SQL query with the follower threshold as a parameter
+  connection.query(sql, [followerThreshold], (err, results) => {
     if (err) {
-      console.error(err);
+      console.error('SQL Error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
     res.json(results);
   });
 });
 
-app.get('/api/users/sentiment-transition', (req, res) => {
-  const sql = `
-  WITH SENTIMENT_TRANSITION AS (
-    SELECT USER_ID, MAX(sentiment) AS max_sentiment, MIN(sentiment) AS min_sentiment
-    FROM ELECTIONTWEETS JOIN USER ON ELECTIONTWEETS.USER_ID = USER.USER_ID
-    GROUP BY USER_ID;
-), DELTA_SENTIMENT AS (
-    SELECT USER_ID, max_sentiment - min_sentiment AS delta_sentiment
-    FROM SENTIMENT_TRANSITION
-), MAX_ENGAGEMENT AS (
-  SELECT USER_ID, SUM(LIKES + RETWEET_COUNT) AS max_engagement 
-  FROM ELECTIONTWEETS WHERE sentiment = (SELECT max_sentiment FROM SENTIMENT_TRANSITION)
-), MIN_ENGAGEMENT AS (
-  SELECT USER_ID, SUM(LIKES + RETWEET_COUNT) AS min_engagement
-  FROM ELECTIONTWEETS WHERE sentiment = (SELECT min_sentiment FROM SENTIMENT_TRANSITION)
-) SELECT USER.USER_ID, USER.USERNAME, delta_sentiment, max_engagement, min_engagement FROM USER JOIN DELTA_SENTIMENT ON USER.USER_ID = DELTA_SENTIMENT.USER_ID JOIN MAX_ENGAGEMENT ON USER.USER_ID = MAX_ENGAGEMENT.USER_ID JOIN MIN_ENGAGEMENT ON USER.USER_ID = MIN_ENGAGEMENT.USER_ID;
-  `;
 
-  connection.query(sql, (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-    res.json(results);
-  });
+  // Error handling for invalid paths
+// app.use((req, res) => {
+//   res.status(404).json({ error: "Not Found" });
+// });
 
-    
-    
-  });
