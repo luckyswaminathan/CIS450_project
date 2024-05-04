@@ -1,4 +1,5 @@
 const express = require('express');
+const { MongoClient, ServerApiVersion } = require('mongodb');
 const app = express();
 const port = 3000;
 
@@ -10,6 +11,16 @@ const connection = mysql.createConnection({
   port: '3306',
   database: 'TWEETANALYSIS'
 });
+
+const uri = "mongodb+srv://group57mongodbuser:nestledibscrunch@group57mongodb.te7y1sa.mongodb.net/?retryWrites=true&w=majority&appName=group57mongodb";
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+});
+
 
 connection.connect(err => {
   if (err) {
@@ -285,47 +296,76 @@ app.get('/api/engagement/politiciancomparison', (req, res) => {
  });
  
 
-app.get('/api/keywords/political-affiliation', async function(req, res) {
-  const limit = parseInt(req.query.limit) || 10;
-  const politicalAffiliation = req.query.political_affiliation;
+app.get('/api/state-keywords', async function(req, res) {
+  const limit = parseInt(req.query.limit) || 5; //maximum number of keywords/hashtags to show for each state
+  const politicalAffiliation = req.query.political_affiliation; // 'Democrat' or 'Republican'
+  const minimumCount = parseInt(req.query.minimum_count) || 5; // minimum number of tweets keyword must appear in state to be considered for TF-DF
+  const field = req.query.field || 'hashtags'; // 'hashtags' or 'keywords'
 
   // Validate political affiliation
   if (politicalAffiliation && !['Democrat', 'Republican'].includes(politicalAffiliation)) {
     return res.status(400).json({ error: 'Invalid political_affiliation parameter. Choose either Democrat or Republican.' });
   }
 
-  let sql = `
-    SELECT 
-      U.POLITICAL_AFFILIATION, 
-      K.KEYWORD, 
-      COUNT(*) AS keyword_count
-    FROM 
-      ElectionTweets E
-    JOIN 
-      Keywords K ON E.tweet_id = K.tweet_id
-    JOIN 
-      User U ON E.USER_ID = U.USER_ID
-    `;
-
-  if (politicalAffiliation) {
-    sql += " WHERE U.POLITICAL_AFFILIATION = ?";
+  // Validate the field parameter
+  if (field && !['keywords', 'hashtags'].includes(field)) {
+    return res.status(400).json({ error: 'Invalid field parameter. Choose either "keywords" or "hashtags".' });
   }
 
-  sql += `
-    GROUP BY 
-      U.POLITICAL_AFFILIATION, K.KEYWORD
-    ORDER BY 
-      U.POLITICAL_AFFILIATION, keyword_count DESC
-    LIMIT ?
-  `;
+  // Determine comparison operator based on political affiliation
+  const comparisonOperator = politicalAffiliation === 'Republican' ? '$lt' : '$gt';
 
-  // Execute the query with async/await
   try {
-    const [results] = await connection.promise().query(sql, politicalAffiliation ? [politicalAffiliation, limit] : [limit]);
+    await client.connect();
+    const database = client.db("group57");
+    const collection = database.collection("tweets");
+
+    const pipeline = [
+  { $match: {
+    bias: { [comparisonOperator]: 0 },
+    country: "United States of America"
+  }},
+  { $unwind: `$${field}` }, // Unwind by 'keywords' or 'hashtags'
+  { $group: {
+      _id: { keyword: `$${field}`, stateCode: "$state_code" }, // Group by keyword and state_code
+      countInState: { $sum: 1 }
+  }},
+  { $match: { countInState: { $gte: minimumCount } } },
+  { $group: {
+      _id: "$_id.keyword",
+      totalFrequency: { $sum: "$countInState" },
+      states: {
+          $push: {
+              stateCode: "$_id.stateCode",
+              countInState: "$countInState"
+          }
+      }
+  }},
+  { $unwind: "$states" },
+  { $project: {
+      keyword: "$_id",
+      stateCode: "$states.stateCode",
+      uniquenessScore: {
+          $divide: ["$states.countInState", "$totalFrequency"]
+      }
+  }},
+  { $sort: { stateCode: 1, uniquenessScore: -1 } },
+  { $group: {
+      _id: "$stateCode",
+      keywords: { $push: "$keyword" }
+  }},
+  { $project: {
+      keywords: { $slice: ["$keywords", limit] } // Limit the keywords returned per state
+  }}
+]
+
+    const results = await collection.aggregate(pipeline).toArray();
     res.json(results);
   } catch (err) {
     console.error('Database query error:', err);
     res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    await client.close();
   }
 });
 
