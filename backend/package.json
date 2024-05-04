@@ -11,6 +11,8 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.19.2",
-    "mysql": "^2.18.1"
+    "mysql": "^2.18.1",
+    "mongodb": "^4.2.2",
+    "plotly.js-dist": "^2.8.3"
   }
 }
