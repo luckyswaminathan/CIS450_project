@@ -21,7 +21,6 @@ const client = new MongoClient(uri, {
   }
 });
 
-
 connection.connect(err => {
   if (err) {
     console.error('Connection error:', err);
@@ -29,6 +28,8 @@ connection.connect(err => {
   }
   console.log('Connected to MySQL');
 });
+
+
 
 app.get('/', (req, res) => {
   res.send('Hello World!');
@@ -48,20 +49,19 @@ app.get('/test', (req, res) => {
   });
 });
 
-
+// WORKING
 app.get('/api/user-engagement', (req, res) => {
   // Retrieve the sentiment range parameters from the query string
   const { min_sentiment, max_sentiment } = req.query;
 
-  // Initialize the base SQL query
   let sql = `
     SELECT 
       U.USER_ID, 
       AVG(E.LIKES) AS AVG_LIKES, 
-      AVG(E.RETWEETS) AS AVG_RETWEETS, 
+      AVG(E.RETWEET_COUNT) AS AVG_RETWEET_COUNT, 
       AVG(E.SENTIMENT) AS AVG_SENTIMENT
     FROM 
-      ElectionTweets E
+      ELECTIONTWEETS E
     JOIN 
       User U ON E.USER_ID = U.USER_ID
   `;
@@ -96,7 +96,7 @@ app.get('/api/user-engagement', (req, res) => {
     GROUP BY 
       U.USER_ID
     ORDER BY 
-      AVG_LIKES DESC, AVG_RETWEETS DESC;
+      AVG_LIKES DESC, AVG_RETWEET_COUNT DESC;
   `;
 
   // Execute the SQL query
@@ -109,18 +109,19 @@ app.get('/api/user-engagement', (req, res) => {
   });
 });
 
+// WORKING
 app.get('/api/influence', (req, res) => {
   let minFollowers = req.query.minFollowers || 1000;
   minFollowers = parseInt(minFollowers, 10);
 
-  if (isNaN(minFollowers)) {
-    return res.status(400).json({ error: 'minFollowers parameter must be an integer' });
+  if (isNaN(minFollowers) || minFollowers < 0) {
+    return res.status(400).json({ error: 'minFollowers parameter must be a non-negative integer' });
   }
 
   const sql = `
-    SELECT U.USER_ID, U.USER_SCREEN_NAME, U.FOLLOWERS, U.POLITICAL_AFFILIATION, AVG(E.LIKES + E.RETWEETS) AS AVG_ENGAGEMENT
+    SELECT U.USER_ID, U.USER_HANDLE, U.FOLLOWERS, U.POLITICAL_AFFILIATION, AVG(E.LIKES + E.RETWEET_COUNT) AS AVG_ENGAGEMENT
     FROM User U
-    JOIN ElectionTweets E ON U.USER_ID = E.USER_ID
+    JOIN ELECTIONTWEETS E ON U.USER_ID = E.USER_ID
     GROUP BY U.USER_ID
     HAVING U.FOLLOWERS > ?
     ORDER BY AVG_ENGAGEMENT DESC, U.FOLLOWERS DESC;
@@ -135,13 +136,20 @@ app.get('/api/influence', (req, res) => {
   });
 });
 
-
+// WORKING
 app.get('/api/sentiment/political-affiliation', (req, res) => {
   const sql = `
-    SELECT U.POLITICAL_AFFILIATION, E.SENTIMENT, COUNT(*) AS SENTIMENT_COUNT
-    FROM ElectionTweets E
+    SELECT 
+      U.POLITICAL_AFFILIATION, 
+      CASE 
+        WHEN E.SENTIMENT > 0 THEN 'Positive'
+        WHEN E.SENTIMENT < 0 THEN 'Negative'
+        ELSE 'Neutral'
+      END AS SENTIMENT_CATEGORY,
+      COUNT(*) AS SENTIMENT_COUNT
+    FROM ELECTIONTWEETS E
     JOIN User U ON E.USER_ID = U.USER_ID
-    GROUP BY U.POLITICAL_AFFILIATION, E.SENTIMENT
+    GROUP BY U.POLITICAL_AFFILIATION, SENTIMENT_CATEGORY
     ORDER BY U.POLITICAL_AFFILIATION, SENTIMENT_COUNT DESC;
   `;
 
@@ -154,17 +162,12 @@ app.get('/api/sentiment/political-affiliation', (req, res) => {
   });
 });
 
-// Error handling for invalid paths
-app.use((req, res) => {
-  res.status(404).json({ error: "Not Found" });
-});
-
-
+// WORKING
 app.get('/api/topics/state-affiliation', (req, res) => {
   const limit = parseInt(req.query.limit || 10, 10);
 
-  if (isNaN(limit)) {
-    return res.status(400).json({ error: 'Limit parameter must be an integer' });
+  if (isNaN(limit) || limit <= 0) {
+    return res.status(400).json({ error: 'Limit parameter must be a positive integer' });
   }
 
   const sql = `
@@ -174,11 +177,11 @@ app.get('/api/topics/state-affiliation', (req, res) => {
       E.TOPIC, 
       COUNT(*) AS TOPIC_COUNT
     FROM 
-      ElectionTweets E
+      ELECTIONTWEETS E
     JOIN 
       User U ON E.USER_ID = U.USER_ID
     WHERE 
-      E.TOPIC IS NOT NULL
+      E.TOPIC IS NOT NULL AND E.COUNTRY = 'United States of America'
     GROUP BY 
       E.STATE, U.POLITICAL_AFFILIATION, E.TOPIC
     ORDER BY 
@@ -195,12 +198,12 @@ app.get('/api/topics/state-affiliation', (req, res) => {
   });
 });
 
-
-app.get('/api/sentiment/time', async function(req, res) {
+// WORKING
+app.get('/api/sentiment/time', function(req, res) {
   const fromDate = req.query.from_date;
   const toDate = req.query.to_date;
 
-  // Validate date inputs using a nullish coalescing operator for defaulting to an invalid date if not provided
+  // Validate date inputs
   if (!fromDate || !toDate || isNaN(new Date(fromDate).getTime()) || isNaN(new Date(toDate).getTime())) {
     return res.status(400).json({ error: 'Invalid date parameters. Please use valid from_date and to_date parameters.' });
   }
@@ -212,7 +215,7 @@ app.get('/api/sentiment/time', async function(req, res) {
       E.SENTIMENT, 
       COUNT(*) AS SENTIMENT_COUNT
     FROM 
-      ElectionTweets E
+      ELECTIONTWEETS E
     WHERE 
       E.TOPIC IS NOT NULL AND E.CREATED_AT BETWEEN ? AND ?
     GROUP BY 
@@ -221,25 +224,27 @@ app.get('/api/sentiment/time', async function(req, res) {
       E.TOPIC, TWEET_MONTH;
   `;
 
-  // Execute the query with async/await
-  try {
-    const [results] = await connection.promise().query(sql, [fromDate, toDate]);
+  // Execute the query using the callback method
+  connection.query(sql, [fromDate, toDate], (err, results, fields) => {
+    if (err) {
+      console.error('Database query error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
     res.json(results);
-  } catch (err) {
-    console.error('Database query error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  });
 });
 
-
+// WORKING
 app.get('/api/sentiment/state', (req, res) => {
-  const { state, topic } = req.query;
+  const { state_code, topic } = req.query;
 
-  // Validate state code (uncomment later when state names changed to abbreviation)
- //const validStates = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA',  //'KS', 'KY', 'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', //'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
-//if (!validStates.includes(state)) {
-//  return res.status(400).json({ error: 'Invalid state parameter. Please provide a valid two-letter //state code.' });
-//}
+  // Validate state code
+ const validStates = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA','KS', 'KY', 'LA', 
+ 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI', 
+ 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
+ if (!validStates.includes(state_code)) {
+  return res.status(400).json({ error: 'Invalid state parameter. Please provide a valid two-letter state code.' });
+  }
 
   // Build SQL query dynamically based on parameters
   let sql = `
@@ -250,12 +255,12 @@ app.get('/api/sentiment/state', (req, res) => {
       SUM(CASE WHEN sentiment = 0 THEN 1 ELSE 0 END) AS neutral_count,
       SUM(CASE WHEN sentiment < 0 THEN 1 ELSE 0 END) AS negative_count
     FROM 
-      Tweets
+      ELECTIONTWEETS
     WHERE 
-      state = ?
+      state_code = ?
   `;
 
-  const params = [state];
+  const params = [state_code];
 
   if (topic) {
     sql += ' AND topic = ?';
@@ -269,23 +274,31 @@ app.get('/api/sentiment/state', (req, res) => {
       console.error(err);
       return res.status(500).json({ error: 'Internal server error' });
     }
+    if (results.length === 0) {
+      return res.status(404).json({ error: 'No data found for the specified topic' });
+    }
     res.json(results);
   });
 });
 
 
-app.get('/api/engagement/politiciancomparison', (req, res) => {
-  sql = `
-    WITH nonP AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as npL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'No'
-    ), P AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as pL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'YES'
-  ) SELECT nonP.npL, P.pL FROM nonP, P;
+//Query 7
+app.get('/api/engagement/user-type-comparison', (req, res) => {
+  // SQL statement to compute average retweets per tweet for Politicians and Others
+  console.log("Route /api/engagement/user-type-comparison accessed");
+  const sql = `
+    SELECT
+        user_category,
+        AVG(CASE
+            WHEN user_category = 'Politician' THEN retweets_for_politicians * 1.0 / total_tweets
+            ELSE retweet_count_for_others * 1.0 / total_tweets
+        END) AS avg_retweets_per_tweet
+    FROM
+        mat_view_user_retweets
+    GROUP BY
+        user_category;
   `;
+
   connection.query(sql, (err, results) => {
     if (err) {
       console.error(err);
@@ -293,9 +306,9 @@ app.get('/api/engagement/politiciancomparison', (req, res) => {
     }
     res.json(results);
   });
- });
+});
  
-
+// Query 8
 app.get('/api/state-keywords', async function(req, res) {
   const limit = parseInt(req.query.limit) || 5; //maximum number of keywords/hashtags to show for each state
   const politicalAffiliation = req.query.political_affiliation; // 'Democrat' or 'Republican'
@@ -369,96 +382,97 @@ app.get('/api/state-keywords', async function(req, res) {
   }
 });
 
+// Query 9
+app.get('/api/users/high-engagement', function(req, res) {
+  // Reading query parameters with defaults
+  const followersThreshold = parseInt(req.query.followersThreshold) || 50;
+  const engagementThreshold = parseFloat(req.query.engagementThreshold) || 5;
+  const compareType = req.query.compareType || 'sentiment'; // 'bias' or 'sentiment'
+  const compareDirection = req.query.compareDirection || '<'; // '<' or '>'
 
-app.get('/api/users/positive-high-engagement', async function(req, res) {
-  // Optional parameters with defaults
-  const followersThreshold = req.query.followersThreshold;
-  const engagementThreshold = req.query.engagementThreshold;
-
-  const sql = `
-    SELECT 
-      U.user_id, 
-      U.user_handle, 
-      U.followers, 
-      AVG(E.likes + E.retweet_count) AS avg_engagement
-    FROM 
-      ElectionTweets AS E
-    INNER JOIN 
-      User AS U ON E.user_id = U.user_id
-    WHERE
-      NOT EXISTS (
-        SELECT 1
-        FROM ElectionTweets AS ET
-        WHERE ET.user_id = E.user_id AND ET.sentiment != 'Positive'
-      )
-    GROUP BY 
-      U.user_id
-    HAVING 
-      U..followers, > ? AND
-      AVG(E.likes + E.retweet_count) > ?
-    ORDER BY 
-      avg_engagement DESC, 
-      U..followers,  DESC;
-  `;
-
-  // Execute the query with async/await
-  try {
-    const [results] = await connection.promise().query(sql, [followersThreshold || 1000, engagementThreshold || 500]);
-    res.json(results);
-  } catch (err) {
-    console.error('Database query error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+  // Validate compareType and compareDirection
+  if (!['sentiment', 'bias'].includes(compareType)) {
+      return res.status(400).json({ error: 'Invalid compareType value. It must be "bias" or "sentiment".' });
   }
-});
+  if (!['<', '>'].includes(compareDirection)) {
+      return res.status(400).json({ error: 'Invalid compareDirection value. It must be "<" or ">".' });
+  }
 
+  // Setup the NOT EXISTS subquery based on compareType and compareDirection
+  const sentimentComparison = `ET.${compareType} ${compareDirection} 0`;
 
-app.get('/api/engagement/politiciancomparison', (req, res) => {
-  sql = `
-    WITH nonP AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as npL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'No'
-    ), P AS (
-      SELECT SUM(e.LIKES + e.RETWEET_COUNT) as pL FROM
-      User u JOIN ELECTIONTWEETS e ON u.USER_ID = e.USER_ID
-      WHERE u.IS_POLITICIAN = 'YES'
-  ) SELECT nonP.npL, P.pL FROM nonP, P;
-  `;
-  connection.query(sql, (err, results) => {
-    if (err) {
-      console.error(err);
-      return res.status(500).json({ error: 'Internal server error' });
-    }
-    res.json(results);
-  });
-});
-
-app.get('/api/users/sentiment-transition', (req, res) => {
   const sql = `
-  WITH SENTIMENT_TRANSITION AS (
-    SELECT USER_ID, MAX(sentiment) AS max_sentiment, MIN(sentiment) AS min_sentiment
-    FROM ELECTIONTWEETS JOIN USER ON ELECTIONTWEETS.USER_ID = USER.USER_ID
-    GROUP BY USER_ID;
-), DELTA_SENTIMENT AS (
-    SELECT USER_ID, max_sentiment - min_sentiment AS delta_sentiment
-    FROM SENTIMENT_TRANSITION
-), MAX_ENGAGEMENT AS (
-  SELECT USER_ID, SUM(LIKES + RETWEET_COUNT) AS max_engagement 
-  FROM ELECTIONTWEETS WHERE sentiment = (SELECT max_sentiment FROM SENTIMENT_TRANSITION)
-), MIN_ENGAGEMENT AS (
-  SELECT USER_ID, SUM(LIKES + RETWEET_COUNT) AS min_engagement
-  FROM ELECTIONTWEETS WHERE sentiment = (SELECT min_sentiment FROM SENTIMENT_TRANSITION)
-) SELECT USER.USER_ID, USER.USERNAME, delta_sentiment, max_engagement, min_engagement FROM USER JOIN DELTA_SENTIMENT ON USER.USER_ID = DELTA_SENTIMENT.USER_ID JOIN MAX_ENGAGEMENT ON USER.USER_ID = MAX_ENGAGEMENT.USER_ID JOIN MIN_ENGAGEMENT ON USER.USER_ID = MIN_ENGAGEMENT.USER_ID;
+      SELECT 
+        U.user_handle, 
+        U.followers, 
+        U.avg_engagement
+      FROM 
+        User AS U
+      WHERE
+        NOT EXISTS (
+          SELECT 1
+          FROM ELECTIONTWEETS AS ET
+          WHERE ET.user_id = U.user_id AND ${sentimentComparison}
+        )
+        AND U.followers > ?
+        AND U.avg_engagement > ?
+      ORDER BY 
+        U.avg_engagement DESC, 
+        U.followers DESC;
   `;
 
-  connection.query(sql, (err, results) => {
+  // Execute the query with callback
+  connection.query(sql, [followersThreshold, engagementThreshold], function(err, results) {
+      if (err) {
+          console.error('Database query error:', err);
+          return res.status(500).json({ error: 'Internal server error' });
+      }
+      res.json(results);
+  });
+});
+
+//Query 10
+app.get('/api/users/sentiment-transition', (req, res) => {
+  // Retrieve the follower_threshold from the query string with a default of 1000
+  let followerThreshold = parseInt(req.query.followerThreshold, 10) || 1000;
+
+  // Validate the follower threshold to ensure it's a positive number
+  if (isNaN(followerThreshold) || followerThreshold < 0) {
+    return res.status(400).json({ error: 'The follower threshold must be a positive integer.' });
+  }
+
+  // SQL query to find users with a significant sentiment transition and their engagement ratio changes
+  const sql = `
+    SELECT
+        U.USER_ID,
+        U.USER_HANDLE,
+        MV.TRANSITION,
+        MV.PRE_ENGAGEMENT_RATIO,
+        MV.POST_ENGAGEMENT_RATIO,
+        (MV.POST_ENGAGEMENT_RATIO - MV.PRE_ENGAGEMENT_RATIO) AS ENGAGEMENT_DIFF
+    FROM
+        User U
+    JOIN
+        materialized_view_user_sentiment_transition MV ON U.USER_ID = MV.USER_ID
+    WHERE
+        U.FOLLOWERS > ?
+        AND MV.TRANSITION != 'No Transition'
+    ORDER BY
+        ENGAGEMENT_DIFF DESC;
+  `;
+
+  // Execute the SQL query with the follower threshold as a parameter
+  connection.query(sql, [followerThreshold], (err, results) => {
     if (err) {
-      console.error(err);
+      console.error('SQL Error:', err);
       return res.status(500).json({ error: 'Internal server error' });
     }
     res.json(results);
   });
+});
 
-    
-    
-  });
+
+// Error handling for invalid paths
+app.use((req, res) => {
+  res.status(404).json({ error: "Not Found" });
+});
