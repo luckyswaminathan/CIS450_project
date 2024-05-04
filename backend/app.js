@@ -98,7 +98,7 @@ app.get('/api/user-engagement', (req, res) => {
   });
 });
 
-app.get('/api/influence', (req, res) => {
+app.get('/api/users/influence', (req, res) => {
   let minFollowers = req.query.minFollowers || 1000;
   minFollowers = parseInt(minFollowers, 10);
 
