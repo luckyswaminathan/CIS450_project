@@ -2,6 +2,11 @@
   text-align: center;
 }
 
+.text {
+  color: #282c34;
+  font: helvetica;
+}
+
 .App-logo {
   height: 40vmin;
   pointer-events: none;
