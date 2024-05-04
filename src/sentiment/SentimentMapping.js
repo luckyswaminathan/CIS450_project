@@ -2,7 +2,7 @@ import React, {useState} from 'react';
 import { VStack, HStack, Flex, Spacer, Box, Button } from '@chakra-ui/react'
 import { Textarea } from '@chakra-ui/react'
 
-function StateAffiliation() {
+function SentimentTransition() {
   const [textValue, setTextValue] = useState('');
 
   const handleChange = (event) => {
@@ -19,8 +19,8 @@ function StateAffiliation() {
         <Spacer />
         <VStack spacing={100}>
         <Box>
-          <h1 className='text-center'>Topics Discussed by State Affiliation</h1>
-          <p className='text-small'>a query to identify topics talked about most per state</p>
+          <h1 className='text-center'>Sentiment Transition</h1>
+          <p className='text-small'>a query to identify users who have a significant transition of sentiment over time</p>
  
         </Box>
       <form onSubmit={handleSubmit}>
@@ -28,7 +28,7 @@ function StateAffiliation() {
         <Textarea
             value={textValue}
             onChange={handleChange}
-            placeholder="enter a limit for topics, default is 10"
+            placeholder="enter timeperiod for sentiment transition"
             onSubmit={handleSubmit}
           />
         </Box>
@@ -41,4 +41,4 @@ function StateAffiliation() {
   );
 }
 
-export default StateAffiliation;
+export default SentimentTransition;

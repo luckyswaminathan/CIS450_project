@@ -6,6 +6,11 @@
   color: black
 }
 
+.text-small {
+    font-size: 20px;
+    color: black;
+    text-align: center;
+}
 
 .body {
     background-color: black

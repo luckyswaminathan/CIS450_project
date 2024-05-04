@@ -1,7 +1,7 @@
 import React from 'react';
 
 
-function SentimentOverTime() {
+function PoliticianComparison() {
   return (
     <div>
       <h1 className='text'>influence page</h1>
@@ -10,4 +10,4 @@ function SentimentOverTime() {
   );
 }
 
-export default SentimentOverTime;
+export default PoliticianComparison;
