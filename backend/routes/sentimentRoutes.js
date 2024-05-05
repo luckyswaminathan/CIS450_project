@@ -43,14 +43,23 @@ router.get('/time', function(req, res) {
       SELECT 
         E.TOPIC, 
         MONTH(E.CREATED_AT) AS TWEET_MONTH, 
-        E.SENTIMENT, 
+        CASE 
+          WHEN E.SENTIMENT < 0 THEN 'Negative' 
+          WHEN E.SENTIMENT = 0 THEN 'Neutral' 
+          WHEN E.SENTIMENT > 0 THEN 'Positive' 
+        END AS SENTIMENT_CATEGORY,
         COUNT(*) AS SENTIMENT_COUNT
       FROM 
         ELECTIONTWEETS E
       WHERE 
         E.TOPIC IS NOT NULL AND E.CREATED_AT BETWEEN ? AND ?
       GROUP BY 
-        E.TOPIC, MONTH(E.CREATED_AT), E.SENTIMENT
+        E.TOPIC, MONTH(E.CREATED_AT), 
+        CASE 
+          WHEN E.SENTIMENT < 0 THEN 'Negative' 
+          WHEN E.SENTIMENT = 0 THEN 'Neutral' 
+          WHEN E.SENTIMENT > 0 THEN 'Positive'
+        END
       ORDER BY 
         E.TOPIC, TWEET_MONTH;
     `;
