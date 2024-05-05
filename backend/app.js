@@ -312,7 +312,7 @@ app.get('/api/engagement/user-type-comparison', (req, res) => {
 app.get('/api/state-keywords', async function(req, res) {
   const limit = parseInt(req.query.limit) || 5; //maximum number of keywords/hashtags to show for each state
   const politicalAffiliation = req.query.political_affiliation; // 'Democrat' or 'Republican'
-  const minimumCount = parseInt(req.query.minimum_count) || 5; // minimum number of tweets keyword must appear in state to be considered for TF-DF
+  const minimumCount = parseInt(req.query.minimum_count) || 5; // minimum number of tweets keyword must appear in state to be considered for TF
   const field = req.query.field || 'hashtags'; // 'hashtags' or 'keywords'
 
   // Validate political affiliation
