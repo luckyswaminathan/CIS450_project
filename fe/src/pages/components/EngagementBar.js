@@ -30,7 +30,7 @@ export default function EngagementBar() {
             >
                 Engagement {isOpen ? <ChevronUpIcon /> : <ChevronDownIcon />}
             </MenuButton>
-            <MenuList onMouseEnter={onOpen} onMouseLeave={() => setTimeout(onClose, 500)}>
+            <MenuList onMouseEnter={onOpen} onMouseLeave={() => setTimeout(onClose, 1000)}>
                 <MenuItem>
                 <Link to="/engagement/user-engagement" style={{ fontSize:20, textDecoration: 'none', color: 'inherit' }}>
                     User Engagement Comparison
