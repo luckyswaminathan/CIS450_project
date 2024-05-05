@@ -79,16 +79,18 @@ router.get('/state', (req, res) => {
   
     // Build SQL query dynamically based on parameters
     let sql = `
-      SELECT 
-        state,
-        topic,
-        SUM(CASE WHEN sentiment > 0 THEN 1 ELSE 0 END) AS positive_count,
-        SUM(CASE WHEN sentiment = 0 THEN 1 ELSE 0 END) AS neutral_count,
-        SUM(CASE WHEN sentiment < 0 THEN 1 ELSE 0 END) AS negative_count
-      FROM 
-        ELECTIONTWEETS
-      WHERE 
-        state_code = ?
+        SELECT 
+            E.state,
+            E.topic,
+            SUM(CASE WHEN E.sentiment > 0 THEN 1 ELSE 0 END) AS positive_count,
+            SUM(CASE WHEN E.sentiment = 0 THEN 1 ELSE 0 END) AS neutral_count,
+            SUM(CASE WHEN E.sentiment < 0 THEN 1 ELSE 0 END) AS negative_count
+        FROM 
+            ELECTIONTWEETS E
+        JOIN 
+            states S ON E.state = S.state
+        WHERE 
+            S.state_code = ?
     `;
   
     const params = [state_code];
