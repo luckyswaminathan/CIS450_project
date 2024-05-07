@@ -66,6 +66,7 @@ function HighEngagement() {
           {data.length > 0 ? (
             data.map((item, index) => (
               <Box key={index} p={4} boxShadow="md" borderRadius="md" w="full">
+                <Text>USER_HANDLE: {item.user_handle}</Text>
                 <Text>FOLLOWERS: {item.followers}</Text>
                 <Text>AVG_ENGAGEMENT: {item.avg_engagement}</Text>
               </Box>
