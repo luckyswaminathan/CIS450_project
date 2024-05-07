@@ -1,6 +1,8 @@
-# Getting Started with Create React App
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+
+# Project Description
+
+When politicians of a particular party tweet, it stands to reason that they are providing signal about what sort of words, topics, ideas, etc. are relevant to their party’s views, and, more importantly, to their constituency. Our goal with this project is to blend this assumption with a massive dataset of tweets gathered from the heated political discourse occuring in the weeks preceding and including the 2020 presidential election. By bucketing tweets into topics, analyzing their sentiment, and scoring their bias against ‘true’ scores for tweets made by partisan representatives, we gained three critical features with which to study how and what Twitter/X users are talking about across state and political lines. These allow us to make insights that are crucial for anyone involved in the electoral process, from campaign teams to policymakers, as it provides them with valuable information to better connect with voters and consequently influence election outcomes.
 
 ## Available Scripts
 
